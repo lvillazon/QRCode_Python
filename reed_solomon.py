@@ -104,12 +104,12 @@ def build_all_generators():
 
         print("Generator for", codewords, "codewords", end=' ')
         generator = Polynomial()
-        generator.add_alpha_term(0, 1)
-        generator.add_alpha_term(0, 0)
+        generator = generator.add_alpha_term(0, 1)
+        generator = generator.add_alpha_term(0, 0)
         for i in range(1, codewords):
             multiplier = Polynomial()
-            multiplier.add_alpha_term(0, 1)
-            multiplier.add_alpha_term(i, 0)
+            multiplier = multiplier.add_alpha_term(0, 1)
+            multiplier = multiplier.add_alpha_term(i, 0)
             generator = generator.multiply_poly(multiplier)
         if generator.alpha_form() == validator[codewords]:
             print("verified!")
@@ -154,7 +154,7 @@ def ec_codewords(message: list[int], ec_codewords: int) -> list[int]:
     # initialise the result polynomial using the message codewords as coefficients
     result = Polynomial()
     for i in range(len(message)):
-        result.add_int_term(message[i], len(message)-i-1)  # the first codeword is the highest power of x
+        result = result.add_int_term(message[i], len(message)-i-1)  # the first codeword is the highest power of x
 
     # get the correct generator for the number of codewords
     generator = Polynomial(generators[ec_codewords])
@@ -202,15 +202,17 @@ class Polynomial:
     # so (1, 2) -> 1 x^2, which is x squared
     def add_int_term(self, a, x):
         check_valid_GF256(a)
-        if x in self.terms:
+        result = self.clone()
+        if x in result.terms:
             # use XOR for Galois Field addition
-            coefficient = add_GF256(self.terms[x], a)
+            coefficient = add_GF256(result.terms[x], a)
             if coefficient == 0:  # cancel out
-                del self.terms[x]
+                del result.terms[x]
             else:
-                self.terms[x] = coefficient
+                result.terms[x] = coefficient
         else:
-            self.terms[x] = a
+            result.terms[x] = a
+        return result
 
     # add a new term to this polynomial
     # or sum the term with whatever was already there
@@ -218,7 +220,7 @@ class Polynomial:
     # x is the power to which x is raised
     # so (0, 2) -> a^0 x^2, which is x squared
     def add_alpha_term(self, a, x):
-        self.add_int_term(exp[a], x)
+        return self.add_int_term(exp[a], x)
 
     # return a copy of this polynomial
     def clone(self):
@@ -231,7 +233,7 @@ class Polynomial:
     def add_poly(self, p):
         result = self.clone()
         for x, a in p.terms.items():
-            result.add_int_term(a, x)
+            result = result.add_int_term(a, x)
         return result
 
     # multiply this polynomial with another
@@ -242,7 +244,7 @@ class Polynomial:
                 #                a = exp[(log[a1] + log[a2]) % 255]
                 a = (log[a1] + log[a2]) % 255  # TODO Should this be 256?
                 x = x1 + x2
-                result.add_alpha_term(a, x)
+                result = result.add_alpha_term(a, x)
         return result
 
     # shift all terms up by some power of x
