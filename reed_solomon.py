@@ -218,7 +218,10 @@ def ec_codewords(message, ec_codewords: int):
         #print(result.int_form())
 
     # the integer coefficients of the result polynomial are the EC codewords
-    return [a for a in result.terms.values()]
+    # but we must put them in order of descending powers of x first
+    x_terms = sorted(result.terms.keys(), reverse=True)
+    return [result.terms[k] for k in x_terms]
+#    return [a for a in result.terms.values()]
 
 
 class Polynomial:
@@ -359,21 +362,21 @@ def test():
     #print("Test codewords:", ec_codewords(test_message, 10))  # 10 EC codewords required
 
     # input message codewords from the java app and try generating the correct codewords for them
-    while True:
-        message_string = input("\nEnter message codewords: ")
-        codewords_required = int(input("How many EC codewords to generate? "))
-        message = [int(m) for m in message_string.split(",")]
-        print("\nYour EC codewords:")
-        print(", ".join([str(cw) for cw in ec_codewords(message, codewords_required)]))  # 28 EC codewords required
+    # while True:
+    #     message_string = input("\nEnter message codewords: ")
+    #     codewords_required = int(input("How many EC codewords to generate? "))
+    #     message = [int(m) for m in message_string.split(",")]
+    #     print("\nYour EC codewords:")
+    #     print(", ".join([str(cw) for cw in ec_codewords(message, codewords_required)]))  # 28 EC codewords required
 
     # take hardcoded message codewords for "the quickest brownest fox you ever did see wa"
     # and try to generate 28 codewords per block, as required by EC level H
-    # message_blocks = ["66, 215, 70, 134, 82, 7, 23, 86, 150, 54, 182, 87, 55, 66, 6",
-    #     "39, 38, 247, 118, 230, 87, 55, 66, 6, 102, 247, 130, 7, 150, 247",
-    #     "82, 6, 87, 102, 87, 34, 6, 70, 150, 66, 7, 54, 86, 82, 7",
-    #     "118, 16, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236"
-    #     ]
-    # print("\nYour EC codewords (len=28):")
-    # for block in message_blocks:
-    #     message = [int(m) for m in block.split(", ")]
-    #     print(",".join(["{:>4}".format(str(cw)) for cw in ec_codewords(message, 28)]))  # 28 EC codewords required
+    message_blocks = ["66, 215, 70, 134, 82, 7, 23, 86, 150, 54, 182, 87, 55, 66, 6",
+        "39, 38, 247, 118, 230, 87, 55, 66, 6, 102, 247, 130, 7, 150, 247",
+        "82, 6, 87, 102, 87, 34, 6, 70, 150, 66, 7, 54, 86, 82, 7",
+        "118, 16, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236"
+        ]
+    print("\nYour EC codewords (len=28):")
+    for block in message_blocks:
+        message = [int(m) for m in block.split(", ")]
+        print(",".join(["{:>4}".format(str(cw)) for cw in ec_codewords(message, 28)]))  # 28 EC codewords required
