@@ -4,18 +4,21 @@
 # 1. convert the message into a polynomial
 #    where each byte is the coefficient of a different term
 #    eg [84, 69, 83, 84] -> 84x^3 + 69x^2 + 83x + 84
-#    The powers of x are represented as a bit field,
-#    where a 1 means that this power is present, so 1111 in this case.
-#    (1010101 would mean 84x^6 + 69x^4 + 83x^2 + 84)
-#    So coefficients remain as a byte list and the powers as a bit string
+#    The polynomial is represented as a dictionary with powers of X as the key
+#    and integer coefficients as the value
 
 # 2. Multiply message polynomial by x^number of EC codewords to make space
-#    ie append as many zeros as you need need EC codewords
+#    ie increase the key of each element by the number of EC codewords
 
-# 3. Divide the message using GF256 arithmetic
+# 3. Lookup the correct generator polynomial for the number of EC codewords required
+#    (a generator function is included should we ever need a generator that is not in the table
+#    but the table includes all values that are required for standard QR codes)
+#
+# 4. Repeatedly divide the message using GF256 arithmetic until the highest power of x in the polynomial
+#    is less than the highest power of the generator
 
-# 4. There should be exactly the right number of coefficients in the remainder
-#    To supply the EC codewords, so simply return this list
+# 5. The coefficients of the polynomial are the EC codewords. Return these, in order
+#    making sure to supply 0 for any missing terms
 
 # GLOBAL DATA TABLES
 exp = (
@@ -54,34 +57,6 @@ log = (
     203, 89, 95, 176, 156, 169, 160, 81, 11, 245, 22, 235, 122, 117, 44, 215,
     79, 174, 213, 233, 230, 231, 173, 232, 116, 214, 244, 234, 168, 80, 88, 175)
 
-# old generators that used GF256 log tables with the wrong irreducible polynomial
-# generators = {
-#     7: {7: 1, 6: 127, 5: 123, 4: 226, 3: 201, 2: 13, 1: 80, 0: 115, },
-#     10: {10: 1, 9: 180, 8: 169, 7: 230, 6: 110, 5: 173, 4: 77, 3: 76, 2: 118, 1: 229, 0: 171, },
-#     13: {13: 1, 12: 241, 11: 91, 10: 155, 9: 16, 8: 220, 7: 16, 6: 39, 5: 11, 4: 58, 3: 62, 2: 70, 1: 250, 0: 120, },
-#     15: {15: 1, 14: 26, 13: 175, 12: 110, 11: 206, 10: 119, 9: 89, 8: 12, 7: 104, 6: 104, 5: 242, 4: 250, 3: 233, 2: 51,
-#          1: 249, 0: 29, },
-#     16: {16: 1, 15: 47, 14: 11, 13: 105, 12: 214, 11: 80, 10: 186, 9: 24, 8: 15, 7: 206, 6: 84, 5: 61, 4: 157, 3: 101,
-#          2: 33, 1: 54, 0: 47, },
-#     17: {17: 1, 16: 112, 15: 86, 14: 70, 13: 120, 12: 112, 11: 23, 10: 174, 9: 70, 8: 134, 7: 61, 6: 247, 5: 249, 4: 64,
-#          3: 38, 2: 124, 1: 100, 0: 93, },
-#     18: {18: 1, 17: 145, 16: 133, 15: 218, 14: 118, 13: 234, 12: 196, 11: 173, 10: 188, 9: 136, 8: 177, 7: 91, 6: 71,
-#          5: 199, 4: 88, 3: 51, 2: 87, 1: 181, 0: 237, },
-#     20: {20: 1, 19: 225, 18: 211, 17: 136, 16: 4, 15: 110, 14: 100, 13: 6, 12: 177, 11: 119, 10: 232, 9: 81, 8: 54,
-#          7: 208, 6: 23, 5: 156, 4: 172, 3: 121, 2: 121, 1: 200, 0: 197, },
-#     22: {22: 1, 21: 74, 20: 223, 19: 253, 18: 221, 17: 219, 16: 141, 15: 19, 14: 214, 13: 81, 12: 60, 11: 27, 10: 241,
-#          9: 26, 8: 122, 7: 87, 6: 131, 5: 66, 4: 183, 3: 159, 2: 29, 1: 239, 0: 140, },
-#     24: {24: 1, 23: 123, 22: 113, 21: 194, 20: 83, 19: 222, 18: 146, 17: 180, 16: 96, 15: 117, 14: 232, 13: 157, 12: 91,
-#          11: 252, 10: 90, 9: 41, 8: 62, 7: 163, 6: 1, 5: 146, 4: 143, 3: 127, 2: 181, 1: 238, 0: 115, },
-#     26: {26: 1, 25: 142, 24: 32, 23: 218, 22: 5, 21: 240, 20: 101, 19: 173, 18: 225, 17: 94, 16: 45, 15: 163, 14: 30,
-#          13: 239, 12: 60, 11: 186, 10: 115, 9: 151, 8: 63, 7: 248, 6: 80, 5: 83, 4: 238, 3: 237, 2: 94, 1: 62, 0: 77, },
-#     28: {28: 1, 27: 130, 26: 14, 25: 27, 24: 11, 23: 18, 22: 133, 21: 187, 20: 232, 19: 97, 18: 197, 17: 99, 16: 61,
-#          15: 203, 14: 10, 13: 143, 12: 45, 11: 115, 10: 112, 9: 151, 8: 127, 7: 217, 6: 99, 5: 121, 4: 236, 3: 221,
-#          2: 89, 1: 46, 0: 174, },
-#     30: {30: 1, 29: 190, 28: 142, 27: 94, 26: 91, 25: 168, 24: 170, 23: 88, 22: 101, 21: 4, 20: 83, 19: 97, 18: 220,
-#          17: 23, 16: 181, 15: 243, 14: 32, 13: 217, 12: 142, 11: 90, 10: 31, 9: 18, 8: 58, 7: 156, 6: 89, 5: 180,
-#          4: 168, 3: 13, 2: 106, 1: 252, 0: 232, },
-# }
 generators = {
 7: {7: 1, 6: 127, 5: 122, 4: 154, 3: 164, 2: 11, 1: 68, 0: 117, },
 10: {10: 1, 9: 216, 8: 194, 7: 159, 6: 111, 5: 199, 4: 94, 3: 95, 2: 113, 1: 157, 0: 193, },
@@ -185,23 +160,14 @@ def ec_codewords(message, ec_codewords: int):
 
     # get the correct generator for the number of codewords
     generator = Polynomial(generators[ec_codewords])
-    # multiply this by the highest term in the message
-    #generator = generator.multiply_by_x_to_the(result.highest_power_of_x())
 
     # multiply the message poly by x^codewords to ensure there is room for all the EC codewords
     result = result.multiply_by_x_to_the(ec_codewords)
 
-    #print("Multiplied message  :", result.int_form())
-    #print("Multiplied generator:", generator.alpha_form())
-
-    # for as many times as the number of codewords in the message
-    #for step in range(len(message)):
-    # OR
-    # while the highest term of the result exceeds the highest term of the multiplied generator???
+    # while the highest term of the result exceeds the highest term of the generator
     while result.highest_power_of_x() >= generator.highest_power_of_x():
-        #print("Step", step+1)
-        # multiply the original generator in such a way as to guarantee that the lead term in the message
-        # will be cancelled during the XOR step
+        # multiply the original generator in such a way as to guarantee
+        # that the lead term in the message will be cancelled during the XOR step
         # to do this, we must use the coefficient of the lead term in the current remainder
         # and a power of x, such that the remainder and the step_multiplier have the same power of x in the lead term
         step_multiplier = generator.clone()
@@ -209,19 +175,14 @@ def ec_codewords(message, ec_codewords: int):
         adjusting_power = result.highest_power_of_x() - generator.highest_power_of_x()
         adjuster = Polynomial({adjusting_power: lead_coefficient})
         step_multiplier = step_multiplier.multiply_poly(adjuster)
-        #print("multiply generator by", result.highest_term().alpha_form())
-        #print(step_multiplier.int_form())
 
         # add the multiplied generator to the current result polynomial
-        #print("XOR the result with the message polynomial")
         result = result.add_poly(step_multiplier)
-        #print(result.int_form())
 
     # the integer coefficients of the result polynomial are the EC codewords
     # but we must put them in order of descending powers of x first
     x_terms = sorted(result.terms.keys(), reverse=True)
     return [result.terms[k] for k in x_terms]
-#    return [a for a in result.terms.values()]
 
 
 class Polynomial:
@@ -369,14 +330,36 @@ def test():
     #     print("\nYour EC codewords:")
     #     print(", ".join([str(cw) for cw in ec_codewords(message, codewords_required)]))  # 28 EC codewords required
 
-    # take hardcoded message codewords for "the quickest brownest fox you ever did see wa"
-    # and try to generate 28 codewords per block, as required by EC level H
-    message_blocks = ["66, 215, 70, 134, 82, 7, 23, 86, 150, 54, 182, 87, 55, 66, 6",
-        "39, 38, 247, 118, 230, 87, 55, 66, 6, 102, 247, 130, 7, 150, 247",
-        "82, 6, 87, 102, 87, 34, 6, 70, 150, 66, 7, 54, 86, 82, 7",
-        "118, 16, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236"
-        ]
+
+    # TEST 1 - PASSED (needed >= instead of = on division loop)
+    # # take hardcoded message codewords for "the quickest brownest fox you ever did see wa"
+    # # and try to generate 28 codewords per block, as required by EC level H
+    # message_blocks = ["66, 215, 70, 134, 82, 7, 23, 86, 150, 54, 182, 87, 55, 66, 6",
+    #     "39, 38, 247, 118, 230, 87, 55, 66, 6, 102, 247, 130, 7, 150, 247",
+    #     "82, 6, 87, 102, 87, 34, 6, 70, 150, 66, 7, 54, 86, 82, 7",
+    #     "118, 16, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17, 236"
+    #     ]
+
+    # TEST 2 - PASSED (needed to size the EC codes array to the required value so that if the division generates fewer, the others are left as 0
+    # "HELLO WORLD" EC level Q 13 codes
+    message_blocks = ["32,91,11,120,209,114,220,77,67,64,236,17,236"]
+
+    # TEST 3 - FAILED generates a QR code in Java that doesn't read
+    # "the quickest brownest fox you ever did see was a big bad" Version: 6  ECC: H 28 codes per block
+    message_blocks = ["67,135,70,134,82,7,23,86,150,54,182,87,55,66,6",
+                      "39,38,247,118,230,87,55,66,6,102,247,130,7,150,247",
+                      "82,6,87,102,87,34,6,70,150,66,7,54,86,82,7",
+                      "118,23,50,6,18,6,38,150,114,6,38,22,64,236,17"
+                      ]
+
     print("\nYour EC codewords (len=28):")
     for block in message_blocks:
-        message = [int(m) for m in block.split(", ")]
-        print(",".join(["{:>4}".format(str(cw)) for cw in ec_codewords(message, 28)]))  # 28 EC codewords required
+        message = [int(m.strip()) for m in block.split(",")]
+        print(",".join(["{:>4}".format(str(cw)) for cw in ec_codewords(message, 28)]))  # 13 EC codewords required
+
+    # Just generate the codewords for the message block that fails in Java
+    message = [int(m.strip()) for m in message_blocks[0].split(",")]
+    print("EC codewords for Group 1, block 0")
+    print(", ".join(["{}".format(str(cw)) for cw in ec_codewords(message, 28)]))  # 13 EC codewords required
+
+#a21x27 + a174x26 + a61x25 + a241x24 + a208x23 + a175x22 + a175x20 + a28x19 + a216x18 + a130x17 + a106x16 + a107x15 + a162x14 + a70x13 + a251x12 + a80x11 + a88x10 + a160x9 + a16x8 + a223x7 + a98x6 + a169x5 + a100x4 + a224x3 + a171x2 + a117x + a43

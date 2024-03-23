@@ -6,23 +6,12 @@
 
 from enum import Enum
 from reed_solomon import test
+from visualiser import draw_grid
+from qr_code import generate_qr_code
 
 Module = Enum('Module', ['BLACK', 'WHITE'])
-EncodingMode = Enum('EncodingMode',
-                    ['NUMERIC',
-                    'ALPHANUMERIC',
-                    'BYTE',
-                    'KANJI',
-                    'ECI'])
-encoding_mode_value = {EncodingMode.NUMERIC: 1,
-                       EncodingMode.ALPHANUMERIC: 2,
-                       EncodingMode.BYTE: 4,
-                       EncodingMode.KANJI: 8,
-                       EncodingMode.ECI: 7}
-EC_level = Enum('EC_level', ['L', 'M', 'Q', 'H'])  # might be better as a dict
-
 
 # generate a known QR code to validate
 if __name__ == '__main__':
     print('Python QR Code generator')
-    test()  # run test function
+    draw_grid(generate_qr_code('HELLO WORLD'))
