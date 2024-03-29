@@ -99,12 +99,7 @@ def generate_qr_code(message):
     combined_data = _interleave_with_ec(message_codewords, ec_level, version)
 
     # create the grid and place the function patterns
-    grid_dimension = (version - 1) * 4 + 21
-    grid = []
-    for row in range(grid_dimension):
-        grid.append([MODULE_EMPTY] * grid_dimension)
-
-    _add_function_patterns(grid, version)
+    grid = _create_grid_with_function_patterns(version)
 
     # convert the codewords to binary and add to the grid
     sequence = []
@@ -114,10 +109,10 @@ def generate_qr_code(message):
     if version > 1:
         sequence.extend([0] * [7, 0, 3, 4, 3, 0][version // 7])
 
-    _add_data_modules(grid, sequence)
+    grid, module_path = _add_data_modules(grid, sequence)
 
     # apply masking
-    _apply_mask(grid)
+    grid = _apply_mask(grid, module_path, ec_level)
 
     # add format and version info
     format_info = [
@@ -191,10 +186,14 @@ def _choose_smallest_version(message, encoding, ec):
 
 
 # apply the patterns for alignment, timing etc
-def _add_function_patterns(grid, version):
+def _create_grid_with_function_patterns(version):
+    size = (version - 1) * 4 + 21
+    grid = []
+    for row in range(size):
+        grid.append([MODULE_EMPTY] * size)
+
     # 1. The finder patterns are the three blocks in the corners of the
     # QR code at the top left, top right, and bottom left.
-    size = len(grid)
     for finder_y, finder_x in [[0, 0], [size - 7, 0], [0, size - 7]]:
         for i in range(7):
             for j in range(7):
@@ -262,12 +261,14 @@ def _add_function_patterns(grid, version):
         "100111010101000001", "101000110001101001"
     ]
     if version >= 7:
-        version_info = version_info_strings[version]
+        version_info = version_info_strings[version-7]
         bit_counter = len(version_info) - 1
         for j in range(6):
             for i in range(3):
                 grid[size - 11 + i][j] = grid[j][size - 11 + i] = int(version_info[bit_counter])
                 bit_counter -= 1
+
+    return grid
 
 
 # convert the message string into a list of 1s and 0s using the chosen encoding method
@@ -346,9 +347,11 @@ def _add_data_modules(grid, sequence):
     row = col = size - 1  # start in the bottom right corner
     direction = -1  # -1 is up, +1 is down
     square_number = 0
+    placement_path = [MODULE_EMPTY]*len(sequence)
 
     for i in range(len(sequence)):
         grid[row][col] = sequence[i]  # place the next bit in the binary sequence at this square
+        placement_path[i] = row * size + col
         # move to the next unoccupied square on the grid (except if we are on the last module)
         while i < len(sequence) - 1 and grid[row][col] != MODULE_EMPTY:
             if square_number % 2 == 0:
@@ -363,9 +366,37 @@ def _add_data_modules(grid, sequence):
                     if col == 6:  # skip over the timing pattern on col 6
                         col -= 1
             square_number += 1
+    return grid, placement_path
+
+def _add_format(grid, ec_level, mask_number):
+    # see https://www.thonky.com/qr-code-tutorial/format-version-information
+    format_strings = {
+        L: ["111011111000100", "111001011110011", "111110110101010", "111100010011101",
+            "110011000101111", "110001100011000", "110110001000001", "110100101110110"],
+        M: ["101010000010010", "101000100100101", "101111001111100", "101101101001011",
+            "100010111111001", "100000011001110", "100111110010111", "100101010100000"],
+        Q: ["011010101011111", "011000001101000", "011111100110001", "011101000000110",
+            "010010010110100", "010000110000011", "010111011011010", "010101111101101"],
+        H: ["001011010001001", "001001110111110", "001110011100111", "001100111010000",
+            "000011101100010", "000001001010101", "000110100001100", "000100000111011"]
+    }
+    size = len(grid)
+    # select the right pattern and convert to list
+    format_bits = [int(f) for f in format_strings[ec_level][mask_number]]
+    print(format_strings[ec_level][mask_number])
+    for i in range(0, 6):  # bits 0-5 and 9-14 are placed in a nice regular way
+        grid[8][i] = grid[size-i-1][8] = format_bits[i]  # bits 0-5
+        grid[23 - i][8] = grid[8][size - 6 + i] = format_bits[i+9]  # bits 9-14
+
+    # bits 6-8 must be placed separately because of the timing strips getting in the way
+    grid[8][7] = grid[size-7][8] = format_bits[6]
+    grid[8][8] = grid[8][size-8] = format_bits[7]
+    grid[7][8] = grid[8][size-7] = format_bits[8]
+
+    return grid
 
 
-def _apply_mask(grid):
+def _apply_mask(grid, placement_path, ec_level):
     # create an array of lambda functions, 1 for each mask rule
     masks = [lambda row, column: (row + column) % 2 == 0,  # mask 0
              lambda row, column: (row % 2) == 0,  # mask  1
@@ -382,10 +413,15 @@ def _apply_mask(grid):
     best_mask = 0
     for m in range(len(masks)):
         masked_grid = [row[:] for row in grid]  # clone the grid
-        for row in range(len(masked_grid)):
-            for col in range(len(masked_grid)):
-                if masks[m](row, col):  # check the current mask rule against this square on the grid
-                    masked_grid[row][col] = (masked_grid[row][col] + 1) % 2  # invert 1 and 0, if the rule applies
+
+        # apply the format modules now, so they can be included in the penalty score
+        masked_grid = _add_format(masked_grid, ec_level, m)
+
+        for square_number in placement_path:
+            row = square_number // len(grid)
+            col = square_number % len(grid)
+            if masks[m](row, col):  # check the current mask rule against this square on the grid
+                masked_grid[row][col] = (masked_grid[row][col] + 1) % 2  # invert 1 and 0, if the rule applies
 
         # check the penalty
         penalty = _mask_penalty(masked_grid)
@@ -394,7 +430,10 @@ def _apply_mask(grid):
             best_mask = m
 
         # DEBUG
-        print ("mask", m, "penalty=", penalty)
+        print("mask", m, "penalty=", penalty)
+
+    # clone the final mask back to the master grid
+    return masked_grid
 
 # score the grid using the QR code penalty rules
 # see https://www.thonky.com/qr-code-tutorial/data-masking#the-four-penalty-rules
@@ -434,5 +473,3 @@ def _mask_penalty(grid):
     total += penalty
 
     return total
-
-
