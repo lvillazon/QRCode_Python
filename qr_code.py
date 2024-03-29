@@ -2,8 +2,8 @@
 
 # STEPS:
 # 1. Choose appropriate encoding, size and error correction level (assuming BYTE and Q for now)
-# 2. TODO Encode the message string into a binary sequence
-# 3. TODO Interleave and add error correction codes
+# 2. Encode the message string into a binary sequence
+# 3. Interleave and add error correction codes
 # 4. Place function patterns on the grid
 # 5. TODO Add data bits to the grid
 # 6. TODO Apply best mask
@@ -11,6 +11,7 @@
 
 # encoding modes - only actually implementing BYTE
 from reed_solomon import ec_codewords
+from visualiser import draw_grid
 
 NUMERIC = 1
 ALPHANUMERIC = 2
@@ -92,20 +93,32 @@ def generate_qr_code(message):
     ec_level = _choose_ec_level(message)
     version = _choose_smallest_version(message, encoding, ec_level)
     # encode the message
-    codewords = _encode(message, ec_level, version)
+    message_codewords = _encode(message, ec_level, version)
 
     # interleave and add ec
-    final_data = _interleave_with_ec(codewords, ec_level, version)
+    combined_data = _interleave_with_ec(message_codewords, ec_level, version)
 
-    # place function patterns
+    # create the grid and place the function patterns
     grid_dimension = (version - 1) * 4 + 21
     grid = []
     for row in range(grid_dimension):
         grid.append([MODULE_EMPTY] * grid_dimension)
 
     _add_function_patterns(grid, version)
-    # add data bits
+
+    # convert the codewords to binary and add to the grid
+    sequence = []
+    for word in combined_data:
+        sequence.extend(_binary_sequence(word, 8))
+    # add remainder bits, depending on version
+    if version > 1:
+        sequence.extend([0] * [7, 0, 3, 4, 3, 0][version // 7])
+
+    _add_data_modules(grid, sequence)
+
     # apply masking
+    _apply_mask(grid)
+
     # add format and version info
     format_info = [
         ["111011111000100", "111001011110011", "111110110101010", "111100010011101",
@@ -186,12 +199,13 @@ def _add_function_patterns(grid, version):
         for i in range(7):
             for j in range(7):
                 # this complicated boolean condition generates the concentric finder pattern
-                grid[finder_y + i][finder_x + j] = (i not in [1, 5] or j in [0, 6]) and (i in [0, 6] or j not in [1, 5])
+                grid[finder_y + i][finder_x + j] = int((i not in [1, 5] or j in [0, 6])
+                                                       and (i in [0, 6] or j not in [1, 5]))
 
         # 2. The separators are areas of whitespace beside the finder patterns, on the inner edges only.
         for i in range(8):
-            grid[i][7] = grid[i][size - 8] = grid[size - i - 1][7] = grid[7][i] = grid[7][size - i - 1] = \
-                grid[size - 8][i] = 0
+            grid[i][7] = grid[i][size - 8] = \
+                grid[size - i - 1][7] = grid[7][i] = grid[7][size - i - 1] = grid[size - 8][i] = 0
 
     # 3. The alignment patterns are similar to finder patterns, but smaller, and are placed throughout the code.
     # They are used in versions 2 and larger, and their positions depend on the QR code version.
@@ -216,7 +230,7 @@ def _add_function_patterns(grid, version):
             if not overlap:
                 for i in range(-2, 3):
                     for j in range(-2, 3):
-                        grid[row + i][col + j] = i * 5 + j not in [-6, -5, -4, -1, 1, 4, 5, 6]
+                        grid[row + i][col + j] = int(i * 5 + j not in [-6, -5, -4, -1, 1, 4, 5, 6])
 
     # 4. reserve space for the format information, which goes in 4 strips around the separators
     # this also takes care of the permanently black module in the top-right corner of the bottom finder pattern
@@ -291,25 +305,25 @@ def _binary_sequence(n, bits):
 # structure the data into interleaved blocks and add the interleaved error codes after them
 def _interleave_with_ec(codewords, ec_level, version):
     # split the codewords into blocks
-    g1_blocks = group1_blocks[ec_level][version-1]
-    g2_blocks = group2_blocks[ec_level][version-1]
-    g1_words = data_codewords_in_group1[ec_level][version-1]
-    g2_words = data_codewords_in_group2[ec_level][version-1]
-    data_blocks = [codewords[i*g1_words:(i+1)*g1_words] for i in range(g1_blocks)]
-    data_blocks.extend([codewords[g1_words*g1_blocks + i*g2_words:(g1_words*g1_blocks + i+1)*g2_words]
+    g1_blocks = group1_blocks[ec_level][version - 1]
+    g2_blocks = group2_blocks[ec_level][version - 1]
+    g1_words = data_codewords_in_group1[ec_level][version - 1]
+    g2_words = data_codewords_in_group2[ec_level][version - 1]
+    data_blocks = [codewords[i * g1_words:(i + 1) * g1_words] for i in range(g1_blocks)]
+    data_blocks.extend([codewords[g1_words * g1_blocks + i * g2_words:(g1_words * g1_blocks) + (i + 1) * g2_words]
                         for i in range(g2_blocks)])
 
     # generate ec codewords for each block
     ec_blocks = []
     for block in data_blocks:
-        ec_blocks.append(ec_codewords(block, ec_codewords_per_block[ec_level][version-1]))
+        ec_blocks.append(ec_codewords(block, ec_codewords_per_block[ec_level][version - 1]))
 
     # interleave everything
     interleaved = []
     word_count = 0
     i = 0
     # data from both groups
-    while word_count < total_codewords[ec_level][version-1]:
+    while word_count < total_codewords[ec_level][version - 1]:
         for block_count in range(len(data_blocks)):
             if i < len(data_blocks[block_count]):
                 interleaved.append(data_blocks[block_count][i])
@@ -317,12 +331,108 @@ def _interleave_with_ec(codewords, ec_level, version):
         i += 1
 
     # ec codes
-    for j in range(ec_codewords_per_block[ec_level][version-1]):
+    for j in range(ec_codewords_per_block[ec_level][version - 1]):
         for block_count in range(len(ec_blocks)):
             interleaved.append(ec_blocks[block_count][j])
 
-    print('version:{} {} g1 blocks of {} words and {} g2 blocks of {} blocks with {} ec per block'.format(
-          version, g1_blocks, g1_words, g2_blocks, g2_words, ec_codewords_per_block[ec_level][version-1]))
-    print(interleaved)
-    # generate ec codes
-    # interleave it all
+    return interleaved
+
+
+# add the data bits in a specific zig-zag pattern
+# see https://www.thonky.com/qr-code-tutorial/module-placement-matrix#step-6-place-the-data-bits
+# whenever any non-empty squares are encountered, simply continue on to the next empty square along the path.
+def _add_data_modules(grid, sequence):
+    size = len(grid)  # assumes square
+    row = col = size - 1  # start in the bottom right corner
+    direction = -1  # -1 is up, +1 is down
+    square_number = 0
+
+    for i in range(len(sequence)):
+        grid[row][col] = sequence[i]  # place the next bit in the binary sequence at this square
+        # move to the next unoccupied square on the grid (except if we are on the last module)
+        while i < len(sequence) - 1 and grid[row][col] != MODULE_EMPTY:
+            if square_number % 2 == 0:
+                col -= 1
+            else:
+                col += 1
+                row += direction
+                if row < 0 or row >= size:  # reverse direction at the top and bottom edges
+                    direction = -direction
+                    row += direction  # reposition at the start of the next column
+                    col -= 2
+                    if col == 6:  # skip over the timing pattern on col 6
+                        col -= 1
+            square_number += 1
+
+
+def _apply_mask(grid):
+    # create an array of lambda functions, 1 for each mask rule
+    masks = [lambda row, column: (row + column) % 2 == 0,  # mask 0
+             lambda row, column: (row % 2) == 0,  # mask  1
+             lambda row, column: (column % 3) == 0,  # mask 2
+             lambda row, column: (row + column) % 3 == 0,  # mask 3
+             lambda row, column: (row / 2 + column / 3) % 2 == 0,  # mask 4
+             lambda row, column: ((row * column) % 2) + ((row * column) % 3) == 0,  # mask 5
+             lambda row, column: (((row * column) % 2) + ((row * column) % 3)) % 2 == 0,  # mask 6
+             lambda row, column: (((row + column) % 2) + ((row * column) % 3)) % 2 == 0,  # mask 7
+             ]
+
+    # try each one to find which has the lowest penalty
+    lowest_penalty = 99999  # arbitrarily large initial value
+    best_mask = 0
+    for m in range(len(masks)):
+        masked_grid = [row[:] for row in grid]  # clone the grid
+        for row in range(len(masked_grid)):
+            for col in range(len(masked_grid)):
+                if masks[m](row, col):  # check the current mask rule against this square on the grid
+                    masked_grid[row][col] = (masked_grid[row][col] + 1) % 2  # invert 1 and 0, if the rule applies
+
+        # check the penalty
+        penalty = _mask_penalty(masked_grid)
+        if penalty < lowest_penalty:
+            lowest_penalty = penalty
+            best_mask = m
+
+        # DEBUG
+        print ("mask", m, "penalty=", penalty)
+
+# score the grid using the QR code penalty rules
+# see https://www.thonky.com/qr-code-tutorial/data-masking#the-four-penalty-rules
+def _mask_penalty(grid):
+    total = 0
+    # test 1:  -3 for each group of five or more same-colored modules in a row (or column)
+    #          -1 extra for each square in the streak longer than 5
+    penalty = 0
+    # rows
+    for i in range(len(grid)):
+        current_colour = grid[i][0]
+        streak = 1
+        for j in range(1, len(grid)):
+            if grid[i][j] == current_colour:
+                streak += 1
+            else:
+                penalty += (streak >= 5) * (streak - 2)  # only add a penalty for streaks of 5 or more
+                current_colour = grid[i][j]
+                streak = 1
+    # check the streak at the end of the row
+    penalty += (streak >= 5) * (streak - 2)
+
+    # columns
+    for j in range(len(grid)):
+        current_colour = grid[0][j]
+        streak = 1
+        for j in range(1, len(grid)):
+            if grid[i][j] == current_colour:
+                streak += 1
+            else:
+                penalty += (streak >= 5) * (streak - 2)  # only add a penalty for streaks of 5 or more
+                current_colour = grid[i][j]
+                streak = 1
+    # check the streak at the end of the row
+    penalty += (streak >= 5) * (streak - 2)
+    print("Penalty 1:", penalty)  # DEBUG
+    total += penalty
+
+    return total
+
+
