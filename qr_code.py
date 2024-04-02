@@ -111,20 +111,9 @@ def generate_qr_code(message):
 
     grid, module_path = _add_data_modules(grid, sequence)
 
-    # apply masking
+    # apply masking, format and version info
     grid = _apply_mask(grid, module_path, ec_level)
 
-    # add format and version info
-    format_info = [
-        ["111011111000100", "111001011110011", "111110110101010", "111100010011101",
-         "110011000101111", "110001100011000", "110110001000001", "110100101110110"],  # L
-        ["101010000010010", "101000100100101", "101111001111100", "101101101001011",
-         "100010111111001", "100000011001110", "100111110010111", "100101010100000"],  # M
-        ["011010101011111", "011000001101000", "011111100110001", "011101000000110",
-         "010010010110100", "010000110000011", "010111011011010", "010101111101101"],  # Q
-        ["001011010001001", "001001110111110", "001110011100111", "001100111010000",
-         "000011101100010", "000001001010101", "000110100001100", "000100000111011"]  # H
-    ]
     return grid
 
 
@@ -386,7 +375,7 @@ def _add_format(grid, ec_level, mask_number):
     print(format_strings[ec_level][mask_number])
     for i in range(0, 6):  # bits 0-5 and 9-14 are placed in a nice regular way
         grid[8][i] = grid[size-i-1][8] = format_bits[i]  # bits 0-5
-        grid[23 - i][8] = grid[8][size - 6 + i] = format_bits[i+9]  # bits 9-14
+        grid[5 - i][8] = grid[8][size - 6 + i] = format_bits[i+9]  # bits 9-14
 
     # bits 6-8 must be placed separately because of the timing strips getting in the way
     grid[8][7] = grid[size-7][8] = format_bits[6]
@@ -398,12 +387,12 @@ def _add_format(grid, ec_level, mask_number):
 
 def _apply_mask(grid, placement_path, ec_level):
     # create an array of lambda functions, 1 for each mask rule
-    masks = [lambda row, column: (row + column) % 2 == 0,  # mask 0
+    masks = [lambda row, column: ((row + column) % 2) == 0,  # mask 0
              lambda row, column: (row % 2) == 0,  # mask  1
              lambda row, column: (column % 3) == 0,  # mask 2
-             lambda row, column: (row + column) % 3 == 0,  # mask 3
-             lambda row, column: (row / 2 + column / 3) % 2 == 0,  # mask 4
-             lambda row, column: ((row * column) % 2) + ((row * column) % 3) == 0,  # mask 5
+             lambda row, column: ((row + column) % 3) == 0,  # mask 3
+             lambda row, column: ((row / 2 + column / 3) % 2) == 0,  # mask 4
+             lambda row, column: (((row * column) % 2) + ((row * column) % 3)) == 0,  # mask 5
              lambda row, column: (((row * column) % 2) + ((row * column) % 3)) % 2 == 0,  # mask 6
              lambda row, column: (((row + column) % 2) + ((row * column) % 3)) % 2 == 0,  # mask 7
              ]
@@ -411,26 +400,28 @@ def _apply_mask(grid, placement_path, ec_level):
     # try each one to find which has the lowest penalty
     lowest_penalty = 99999  # arbitrarily large initial value
     best_mask = 0
-    for m in range(len(masks)):
+    for m in [0]:  # DEBUG force mask to always 0
+    #for m in range(len(masks)):
         masked_grid = [row[:] for row in grid]  # clone the grid
 
         # apply the format modules now, so they can be included in the penalty score
         masked_grid = _add_format(masked_grid, ec_level, m)
 
-        for square_number in placement_path:
-            row = square_number // len(grid)
-            col = square_number % len(grid)
-            if masks[m](row, col):  # check the current mask rule against this square on the grid
-                masked_grid[row][col] = (masked_grid[row][col] + 1) % 2  # invert 1 and 0, if the rule applies
+    for square_number in placement_path:
+        row = square_number // len(grid)
+        col = square_number % len(grid)
+        if masks[m](row, col):  # check the current mask rule against this square on the grid
+            masked_grid[row][col] = (masked_grid[row][col] + 1) % 2  # invert 1 and 0, if the rule applies
 
-        # check the penalty
-        penalty = _mask_penalty(masked_grid)
-        if penalty < lowest_penalty:
-            lowest_penalty = penalty
-            best_mask = m
+    # check the penalty
+    penalty = _mask_penalty(masked_grid)
+    if penalty < lowest_penalty:
+        lowest_penalty = penalty
+        best_mask = m
 
-        # DEBUG
-        print("mask", m, "penalty=", penalty)
+    # DEBUG
+    print(''.join([str(i) for i in masked_grid[0]]), end=' ')
+    print("mask", m, "penalty=", penalty)
 
     # clone the final mask back to the master grid
     return masked_grid
@@ -439,36 +430,30 @@ def _apply_mask(grid, placement_path, ec_level):
 # see https://www.thonky.com/qr-code-tutorial/data-masking#the-four-penalty-rules
 def _mask_penalty(grid):
     total = 0
-    # test 1:  -3 for each group of five or more same-colored modules in a row (or column)
-    #          -1 extra for each square in the streak longer than 5
     penalty = 0
     # rows
     for i in range(len(grid)):
         current_colour = grid[i][0]
         streak = 1
         for j in range(1, len(grid)):
-            if grid[i][j] == current_colour:
+            if grid[i][j] == current_colour and j < len(grid)-1:  # automatically break the streak at the end of the row
                 streak += 1
             else:
-                penalty += (streak >= 5) * (streak - 2)  # only add a penalty for streaks of 5 or more
+                penalty += streak-2 if streak >= 5 else 0  # only add a penalty for streaks of 5 or more
                 current_colour = grid[i][j]
                 streak = 1
-    # check the streak at the end of the row
-    penalty += (streak >= 5) * (streak - 2)
 
     # columns
-    for j in range(len(grid)):
-        current_colour = grid[0][j]
+    for i in range(len(grid)):
+        current_colour = grid[0][i]
         streak = 1
         for j in range(1, len(grid)):
-            if grid[i][j] == current_colour:
+            if grid[j][i] == current_colour and j < len(grid)-1:
                 streak += 1
             else:
-                penalty += (streak >= 5) * (streak - 2)  # only add a penalty for streaks of 5 or more
-                current_colour = grid[i][j]
+                penalty += streak-2 if streak >= 5 else 0  # only add a penalty for streaks of 5 or more
+                current_colour = grid[j][i]
                 streak = 1
-    # check the streak at the end of the row
-    penalty += (streak >= 5) * (streak - 2)
     print("Penalty 1:", penalty)  # DEBUG
     total += penalty
 
