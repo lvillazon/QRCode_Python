@@ -139,7 +139,6 @@ def check_valid_GF256(n):
 
 # bitwise XOR for adding and subtracting
 def add_GF256(a, b):
-    # print(a,"XOR", b, "=", a^b)  # DEBUG
     return a ^ b
 
 
@@ -242,7 +241,7 @@ class Polynomial:
         # each coefficient is multiplied using logarithm lookups
         result = Polynomial()
         for x, a in self.terms.items():
-            new_a = (log[a] + log[n]) % 255  # TODO Should this be 256?
+            new_a = (log[a] + log[n]) % 255
             result = result.add_alpha_term(new_a, x)
         return result
 
@@ -251,8 +250,7 @@ class Polynomial:
         result = Polynomial()
         for x1, a1 in self.terms.items():
             for x2, a2 in p2.terms.items():
-                #                a = exp[(log[a1] + log[a2]) % 255]
-                a = (log[a1] + log[a2]) % 255  # TODO Should this be 256?
+                a = (log[a1] + log[a2]) % 255
                 x = x1 + x2
                 result = result.add_alpha_term(a, x)
         return result

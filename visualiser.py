@@ -31,10 +31,10 @@ def draw_grid(qr_modules):
     for row in range(len(qr_modules)):
         for col in range(len(qr_modules[0])):
             # DEBUG check for any unallocated squares - remove when working
-            if qr_modules[row][col] == 8:
-                t.color('green')
-            else:
-                t.color('black')
+            # if qr_modules[row][col] == 8:
+            #     t.color('green')
+            # else:
+            #     t.color('black')
 
             if qr_modules[row][col]:
                 _square(left + col * module_size, top - row * module_size, module_size)

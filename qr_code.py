@@ -5,19 +5,18 @@
 # 2. Encode the message string into a binary sequence
 # 3. Interleave and add error correction codes
 # 4. Place function patterns on the grid
-# 5. TODO Add data bits to the grid
-# 6. TODO Apply best mask
-# 7. TODO Add format and version information (version info is done)
+# 5. Add data bits to the grid
+# 6. Apply best mask
+# 7. Add format and version information
 
 # encoding modes - only actually implementing BYTE
 from reed_solomon import ec_codewords
-from visualiser import draw_grid
 
 NUMERIC = 1
 ALPHANUMERIC = 2
 BYTE = 4
 
-# error correction levels TODO - is this the only ordering? I have a feeling it is LMHQ in a few places
+# error correction levels
 L = 0
 M = 1
 Q = 2
@@ -112,7 +111,7 @@ def generate_qr_code(message):
     grid, module_path = _add_data_modules(grid, sequence)
 
     # apply masking, format and version info
-    grid = _apply_mask(grid, module_path, ec_level)
+    grid = _apply_best_mask(grid, module_path, ec_level)
 
     return grid
 
@@ -372,7 +371,6 @@ def _add_format(grid, ec_level, mask_number):
     size = len(grid)
     # select the right pattern and convert to list
     format_bits = [int(f) for f in format_strings[ec_level][mask_number]]
-    print(format_strings[ec_level][mask_number])
     for i in range(0, 6):  # bits 0-5 and 9-14 are placed in a nice regular way
         grid[8][i] = grid[size-i-1][8] = format_bits[i]  # bits 0-5
         grid[5 - i][8] = grid[8][size - 6 + i] = format_bits[i+9]  # bits 9-14
@@ -385,58 +383,63 @@ def _add_format(grid, ec_level, mask_number):
     return grid
 
 
-def _apply_mask(grid, placement_path, ec_level):
+def _apply_best_mask(grid, placement_path, ec_level):
     # create an array of lambda functions, 1 for each mask rule
     masks = [lambda row, column: ((row + column) % 2) == 0,  # mask 0
              lambda row, column: (row % 2) == 0,  # mask  1
              lambda row, column: (column % 3) == 0,  # mask 2
              lambda row, column: ((row + column) % 3) == 0,  # mask 3
-             lambda row, column: ((row / 2 + column / 3) % 2) == 0,  # mask 4
+             lambda row, column: ((row // 2 + column // 3) % 2) == 0,  # mask 4
              lambda row, column: (((row * column) % 2) + ((row * column) % 3)) == 0,  # mask 5
              lambda row, column: (((row * column) % 2) + ((row * column) % 3)) % 2 == 0,  # mask 6
              lambda row, column: (((row + column) % 2) + ((row * column) % 3)) % 2 == 0,  # mask 7
              ]
 
     # try each one to find which has the lowest penalty
-    lowest_penalty = 99999  # arbitrarily large initial value
+    lowest_penalty = 999999  # arbitrarily large initial value
     best_mask = 0
-    for m in [0]:  # DEBUG force mask to always 0
-    #for m in range(len(masks)):
-        masked_grid = [row[:] for row in grid]  # clone the grid
-
+    for m in range(len(masks)):
+        masked_grid = _create_masked_copy(grid, placement_path, masks[m])
         # apply the format modules now, so they can be included in the penalty score
-        masked_grid = _add_format(masked_grid, ec_level, m)
+        _add_format(masked_grid, ec_level, m)
+
+        # check the penalty
+        penalty = _mask_penalty(masked_grid)
+        if penalty < lowest_penalty:
+            lowest_penalty = penalty
+            best_mask = m
+
+    # return the grid with the best mask applied to it
+    print("Applying mask", best_mask)
+    final_masked_grid = _create_masked_copy(grid, placement_path, masks[best_mask])
+    _add_format(final_masked_grid, ec_level, best_mask)
+    return final_masked_grid
+
+def _create_masked_copy(unmasked_grid, placement_path, mask):
+    masked_grid = [row[:] for row in unmasked_grid]  # clone the grid
 
     for square_number in placement_path:
-        row = square_number // len(grid)
-        col = square_number % len(grid)
-        if masks[m](row, col):  # check the current mask rule against this square on the grid
+        row = square_number // len(unmasked_grid)
+        col = square_number % len(unmasked_grid)
+        if mask(row, col):  # check the current mask rule against this square on the grid
             masked_grid[row][col] = (masked_grid[row][col] + 1) % 2  # invert 1 and 0, if the rule applies
 
-    # check the penalty
-    penalty = _mask_penalty(masked_grid)
-    if penalty < lowest_penalty:
-        lowest_penalty = penalty
-        best_mask = m
-
-    # DEBUG
-    print(''.join([str(i) for i in masked_grid[0]]), end=' ')
-    print("mask", m, "penalty=", penalty)
-
-    # clone the final mask back to the master grid
     return masked_grid
 
 # score the grid using the QR code penalty rules
 # see https://www.thonky.com/qr-code-tutorial/data-masking#the-four-penalty-rules
 def _mask_penalty(grid):
+    size = len(grid)
     total = 0
+    # Rule 1: -3 for each group of five or more same-colored modules in a row (or column)
+    #         -1 extra for each square in the streak longer than 5
     penalty = 0
     # rows
-    for i in range(len(grid)):
+    for i in range(size):
         current_colour = grid[i][0]
         streak = 1
-        for j in range(1, len(grid)):
-            if grid[i][j] == current_colour and j < len(grid)-1:  # automatically break the streak at the end of the row
+        for j in range(1, size):
+            if grid[i][j] == current_colour and j < size-1:  # automatically break the streak at the end of the row
                 streak += 1
             else:
                 penalty += streak-2 if streak >= 5 else 0  # only add a penalty for streaks of 5 or more
@@ -444,17 +447,59 @@ def _mask_penalty(grid):
                 streak = 1
 
     # columns
-    for i in range(len(grid)):
+    for i in range(size):
         current_colour = grid[0][i]
         streak = 1
-        for j in range(1, len(grid)):
-            if grid[j][i] == current_colour and j < len(grid)-1:
+        for j in range(1, size):
+            if grid[j][i] == current_colour and j < size-1:
                 streak += 1
             else:
                 penalty += streak-2 if streak >= 5 else 0  # only add a penalty for streaks of 5 or more
                 current_colour = grid[j][i]
                 streak = 1
-    print("Penalty 1:", penalty)  # DEBUG
+    total += penalty
+
+    # Rule 2: -3 for each 2x2 area of same-colored modules in the matrix.
+    penalty = 0
+    for i in range(size-1):
+        for j in range(size-1):
+            # look for a 2x2 block of a single colour
+            penalty += 3*(grid[i][j] == grid[i+1][j] == grid[i][j+1] == grid[i+1][j+1])
+    total += penalty
+
+    # Rule 3: -40 for patterns that look similar to the finder patterns, horizontally or vertically
+    penalty = 0
+    finder_pattern = "10111010000"  # this is basically a slice through the middle of the corner finder patterns
+    reverse_pattern = ''.join(reversed(finder_pattern))
+    # rows
+    for row_string in [''.join([str(module) for module in row]) for row in grid]:
+        penalty += 40 * row_string.count(finder_pattern) + 40 * row_string.count(reverse_pattern)
+
+    # columns
+    transposed = [[row[i] for row in grid] for i in range(size)]
+    for col_string in [''.join([str(module) for module in row]) for row in transposed]:
+        penalty += 40 * col_string.count(finder_pattern) + 40 * col_string.count(reverse_pattern)
+
+    total += penalty
+
+    # Rule 4: penalty if more than half of the modules are dark or light, with a larger penalty for a larger difference
+    penalty = 0
+    total_modules = size * size
+    # Count how many dark modules there are in the matrix.
+    dark_modules = sum(1 for row in grid for module in row if module == 0)
+    percentage_dark = (dark_modules / total_modules) * 100
+    # Determine the previous and next multiple of five of this percentage
+    # eg, for 43 percent, the previous multiple is 40, and the next is 45.
+    previous_multiple_of_five = (percentage_dark // 5) * 5
+    next_multiple_of_five = previous_multiple_of_five + 5
+    # subtract 50 from each of these multiples of five and take the absolute value
+    previous_multiple_of_five = abs(previous_multiple_of_five - 50)
+    next_multiple_of_five = abs(next_multiple_of_five - 50)
+    # Divide each of these by five
+    previous_multiple_of_five //= 5
+    next_multiple_of_five //= 5
+    # Take the smallest of the two numbers and multiply it by 10. This is penalty score #4.
+    penalty = int(min(previous_multiple_of_five, next_multiple_of_five)) * 10
     total += penalty
 
     return total
