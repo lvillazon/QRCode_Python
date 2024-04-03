@@ -356,6 +356,7 @@ def _add_data_modules(grid, sequence):
             square_number += 1
     return grid, placement_path
 
+
 def _add_format(grid, ec_level, mask_number):
     # see https://www.thonky.com/qr-code-tutorial/format-version-information
     format_strings = {
@@ -415,6 +416,7 @@ def _apply_best_mask(grid, placement_path, ec_level):
     _add_format(final_masked_grid, ec_level, best_mask)
     return final_masked_grid
 
+
 def _create_masked_copy(unmasked_grid, placement_path, mask):
     masked_grid = [row[:] for row in unmasked_grid]  # clone the grid
 
@@ -425,6 +427,7 @@ def _create_masked_copy(unmasked_grid, placement_path, mask):
             masked_grid[row][col] = (masked_grid[row][col] + 1) % 2  # invert 1 and 0, if the rule applies
 
     return masked_grid
+
 
 # score the grid using the QR code penalty rules
 # see https://www.thonky.com/qr-code-tutorial/data-masking#the-four-penalty-rules

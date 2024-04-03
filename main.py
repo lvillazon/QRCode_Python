@@ -13,7 +13,7 @@ Module = Enum('Module', ['BLACK', 'WHITE'])
 # generate a known QR code to validate
 if __name__ == '__main__':
     print('Python QR Code generator')
-    #draw_grid(generate_qr_code('HELLO WORLd'))
+    # draw_grid(generate_qr_code('HELLO WORLd'))
     start = time.monotonic_ns()
     qr_code = generate_qr_code('the quickest brownest fox yobrownest fox you ever u ever brownest fox you ever did see w')
     duration = (time.monotonic_ns() - start)//10000000
