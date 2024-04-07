@@ -13,7 +13,8 @@ from qr_code import generate_qr_code
 if __name__ == '__main__':
     print('Python QR Code generator')
     start = time.monotonic_ns()
-    qr_code = generate_qr_code('the quickest brownest fox')
+#    qr_code = generate_qr_code('the quickest brownest fox')
+    qr_code = generate_qr_code('HELLO WORLD')
     duration = (time.monotonic_ns() - start)//10000000
     print("Completed in {:d}ms".format(duration))
     draw_grid(qr_code)

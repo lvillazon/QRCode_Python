@@ -274,7 +274,7 @@ def _encode(message, ec, version):
         sequence.extend(_binary_sequence(ord(char), 8))
     # add terminator bits to fill out the required codewords, or 4 bits, whichever is smaller
     required_bits = total_codewords[ec][version - 1] * 8  # bytes to bits
-    sequence.extend([0] * min(required_bits, 4))
+    sequence.extend([0] * min(required_bits-len(sequence), 4))
     # pad with 0s to take the number of bits to a multiple of 8
     sequence.extend([0] * (8-(len(sequence) % 8)))
     # pad with alternating 236 & 17 binary sequences to match the required total data codewords
