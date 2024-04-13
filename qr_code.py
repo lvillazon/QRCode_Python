@@ -276,7 +276,7 @@ def _encode(message, ec, version):
     required_bits = total_codewords[ec][version - 1] * 8  # bytes to bits
     sequence.extend([0] * min(required_bits-len(sequence), 4))
     # pad with 0s to take the number of bits to a multiple of 8
-    sequence.extend([0] * (8-(len(sequence) % 8)))
+    sequence.extend([0] * ((8-(len(sequence) % 8))%8))
     # pad with alternating 236 & 17 binary sequences to match the required total data codewords
     padding = [236, 17]
     for i in range((required_bits - len(sequence)) // 8):
