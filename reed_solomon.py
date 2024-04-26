@@ -184,11 +184,15 @@ def multiply_GF256(a, b):
 
 # takes a list of codewords as bytes, and returns a list of error correction codewords (also bytes)
 def ec_codewords(message, number_of_ec_codewords: int):
+    # CHECK GENERATORS
+    for i in [7, 10, 13, 15, 16, 17, 18, 20, 22, 24, 26, 28, 30]:
+        p = Polynomial(generators[i])
+        print(p.int_form())
+
     # initialise the result polynomial using the message codewords as coefficients
     result = Polynomial()
     for i in range(len(message)):
         result = result.add_int_term(message[i], len(message) - i - 1)  # the first codeword is the highest power of x
-
     # get the correct generator for the number of codewords
     generator = Polynomial(generators[number_of_ec_codewords])
 
@@ -196,6 +200,7 @@ def ec_codewords(message, number_of_ec_codewords: int):
     result = result.multiply_by_x_to_the(number_of_ec_codewords)
 
     # while the highest term of the result exceeds the highest term of the generator
+    step = 1
     while result.highest_power_of_x() >= generator.highest_power_of_x():
         # multiply the original generator in such a way as to guarantee
         # that the lead term in the message will be cancelled during the XOR step
@@ -207,8 +212,18 @@ def ec_codewords(message, number_of_ec_codewords: int):
         adjuster = Polynomial({adjusting_power: lead_coefficient})
         step_multiplier = step_multiplier.multiply_poly(adjuster)
 
+        # DEBUG
+        print("------STEP {}----------".format(step))
+        print("result before   is:", result.int_form())
+        print("multiply step by  :", adjuster.int_form())
+        print("step multiplier is:", step_multiplier.int_form())
+
         # add the multiplied generator to the current result polynomial
         result = result.add_poly(step_multiplier)
+
+        # DEBUG
+        print("result after    is:", result.int_form())
+        step += 1
 
     # the integer coefficients of the result polynomial are the EC codewords
     # but we must put them in order of descending powers of x first
